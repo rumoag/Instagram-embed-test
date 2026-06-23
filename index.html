@@ -811,19 +811,15 @@
       document.getElementById('modal').classList.add('open');
       document.body.style.overflow = 'hidden';
 
-      // Sin credenciales → mostrar error orientativo
-      if (!credentialsSet) {
-        skeleton.classList.add('hidden');
-        document.getElementById('error-desc').textContent =
-          'Introduce tu App ID y Client Token de Meta en el panel de credenciales para activar los embeds de Instagram.';
-        errorState.classList.add('visible');
-        return;
-      }
-
       try {
-        // Llamada al oEmbed de Meta
-        const accessToken = `${appId}|${clientToken}`;
-        const apiUrl = `https://graph.facebook.com/v19.0/instagram_oembed?url=${encodeURIComponent(postUrl)}&access_token=${encodeURIComponent(accessToken)}&fields=html,thumbnail_url,title`;
+        // Llamada al oEmbed de Meta (Graph API v25.0).
+        // Según la doc actual de Meta, el access_token ya no es obligatorio
+        // y omitir `fields` devuelve los campos por defecto (incluido `html`).
+        let apiUrl = `https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(postUrl)}`;
+        if (credentialsSet) {
+          const accessToken = `${appId}|${clientToken}`;
+          apiUrl += `&access_token=${encodeURIComponent(accessToken)}`;
+        }
 
         const response = await fetch(apiUrl);
         const data = await response.json();
