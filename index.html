@@ -534,15 +534,16 @@
       max-width: 300px;
     }
 
-    .ig-iframe {
+    .embed-container {
       width: 100%;
-      border: none;
-      border-radius: 12px;
-      display: none;
-      min-height: 500px;
+      display: flex;
+      justify-content: center;
+      min-height: 200px;
     }
 
-    .ig-iframe.visible { display: block; }
+    .embed-container iframe {
+      border-radius: 12px;
+    }
 
     .modal-footer {
       padding: 12px 20px 20px;
@@ -629,35 +630,8 @@
   <header>
     <div class="badge">Demo técnica · Instagram oEmbed</div>
     <h1>Instagram Embed<br><span>en el Board</span></h1>
-    <p class="subtitle">Introduce tus credenciales de Meta para activar el oEmbed. Haz clic en una tarjeta para ver el embed real de Instagram en el modal.</p>
+    <p class="subtitle">Haz clic en una tarjeta o pega una URL para ver el embed real de Instagram en el modal. Sin API, sin tokens, sin App Review — usa el embed público oficial de Instagram.</p>
   </header>
-
-  <!-- CREDENTIALS PANEL -->
-  <div class="credentials-panel">
-    <div class="credentials-header">
-      <div class="credentials-dot"></div>
-      <span class="credentials-title">Credenciales Meta App</span>
-    </div>
-    <div class="credentials-grid">
-      <div class="field">
-        <label>App ID</label>
-        <input type="text" id="app-id" placeholder="123456789012345" />
-      </div>
-      <div class="field">
-        <label>Client Token</label>
-        <input type="text" id="client-token" placeholder="abcdef1234567890abcdef1234567890" />
-      </div>
-      <button class="save-btn" onclick="saveCredentials()">Guardar</button>
-    </div>
-    <div class="credentials-status" id="cred-status">
-      <div class="status-dot" id="status-dot"></div>
-      <span id="status-text">Introduce tu App ID y Client Token para activar los embeds.</span>
-    </div>
-    <div class="doc-hint">
-      Encuéntralos en <a href="https://developers.facebook.com/apps/" target="_blank">Meta for Developers → Tu App → Configuración → Básica</a>
-      · El access token es <code style="color:#555;font-size:10px;">{APP_ID}|{CLIENT_TOKEN}</code>
-    </div>
-  </div>
 
   <!-- BOARD -->
   <div class="board">
@@ -702,7 +676,7 @@
         </div>
       </div>
 
-      <div class="card-add" onclick="alert('Aquí iría el flujo de pegar URL')">
+      <div class="card-add" onclick="addLink()">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
           <circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>
         </svg>
@@ -714,15 +688,15 @@
 
   <!-- INFO -->
   <div class="info-section">
-    <div class="info-title">Implementación · Instagram oEmbed (Meta Graph API)</div>
+    <div class="info-title">Implementación · Instagram Embed público (sin Graph API)</div>
     <div class="flow">
-      <div class="flow-step">URL pegada</div>
+      <div class="flow-step">URL del post</div>
       <span class="flow-arrow">→</span>
-      <div class="flow-step"><code>graph.facebook.com/instagram_oembed</code></div>
+      <div class="flow-step"><code>&lt;blockquote class="instagram-media"&gt;</code></div>
       <span class="flow-arrow">→</span>
-      <div class="flow-step">HTML embed en respuesta</div>
+      <div class="flow-step"><code>embed.js · instgrm.Embeds.process()</code></div>
       <span class="flow-arrow">→</span>
-      <div class="flow-step">✅ Inyectar en modal</div>
+      <div class="flow-step">✅ Render en el modal</div>
     </div>
   </div>
 
@@ -741,15 +715,9 @@
         <div class="error-state" id="error-state">
           <div class="error-icon">⚠️</div>
           <div class="error-title">No podemos mostrar este contenido</div>
-          <div class="error-desc" id="error-desc">Puede que sea privado, haya sido eliminado, o las credenciales de Meta no sean válidas.</div>
+          <div class="error-desc" id="error-desc">Puede que sea privado, haya sido eliminado, o la cuenta tenga los embeds desactivados.</div>
         </div>
-        <iframe
-          id="ig-iframe"
-          class="ig-iframe"
-          allow="fullscreen"
-          allowfullscreen
-          title="Contenido de Instagram">
-        </iframe>
+        <div id="embed-container" class="embed-container"></div>
       </div>
       <div class="modal-footer">
         <span class="modal-user" id="modal-user"></span>
@@ -769,99 +737,86 @@
   <script async src="https://www.instagram.com/embed.js"></script>
 
   <script>
-    let appId = '';
-    let clientToken = '';
-    let credentialsSet = false;
+    let skeletonTimer = null;
 
-    function saveCredentials() {
-      const inputAppId = document.getElementById('app-id').value.trim();
-      const inputToken = document.getElementById('client-token').value.trim();
-      const dot = document.getElementById('status-dot');
-      const text = document.getElementById('status-text');
-
-      if (!inputAppId || !inputToken) {
-        dot.className = 'status-dot error';
-        text.textContent = 'Rellena los dos campos para activar los embeds.';
-        return;
-      }
-
-      appId = inputAppId;
-      clientToken = inputToken;
-      credentialsSet = true;
-
-      dot.className = 'status-dot ok';
-      text.textContent = `Credenciales guardadas. Access token: ${appId}|${clientToken.substring(0, 8)}...`;
-    }
-
-    async function openModal(type, postUrl, user, typeLabel) {
+    // Abre el modal y renderiza el post usando el embed público de Instagram.
+    // Construimos el <blockquote class="instagram-media"> a partir de la URL y
+    // dejamos que embed.js lo convierta en el post renderizado. No requiere
+    // Graph API, ni token, ni App Review.
+    function openModal(type, postUrl, user, typeLabel) {
       document.getElementById('modal-type').textContent = type === 'reel' ? '▶ Reel' : '📷 Post';
       document.getElementById('modal-user').textContent = user;
       document.getElementById('external-link').href = postUrl;
 
-      // Reset
       const skeleton = document.getElementById('skeleton');
-      const iframe = document.getElementById('ig-iframe');
+      const container = document.getElementById('embed-container');
       const errorState = document.getElementById('error-state');
 
+      // Reset
       skeleton.classList.remove('hidden');
-      iframe.classList.remove('visible');
-      iframe.src = '';
+      container.innerHTML = '';
       errorState.classList.remove('visible');
+      if (skeletonTimer) clearTimeout(skeletonTimer);
 
       document.getElementById('modal').classList.add('open');
       document.body.style.overflow = 'hidden';
 
-      try {
-        // Llamada al oEmbed de Meta (Graph API v25.0).
-        // Según la doc actual de Meta, el access_token ya no es obligatorio
-        // y omitir `fields` devuelve los campos por defecto (incluido `html`).
-        let apiUrl = `https://graph.facebook.com/v25.0/instagram_oembed?url=${encodeURIComponent(postUrl)}`;
-        if (credentialsSet) {
-          const accessToken = `${appId}|${clientToken}`;
-          apiUrl += `&access_token=${encodeURIComponent(accessToken)}`;
-        }
-
-        const response = await fetch(apiUrl);
-        const data = await response.json();
-
-        if (data.error || !data.html) {
-          throw new Error(data.error?.message || 'No se pudo obtener el embed');
-        }
-
-        // Inyectar el HTML devuelto por la API en un iframe blob
-        const embedHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8">
-          <style>body{margin:0;display:flex;justify-content:center;background:#0a0a0a;}</style>
-          </head><body>${data.html}
-          <script async src="https://www.instagram.com/embed.js"><\/script>
-          </body></html>`;
-
-        const blob = new Blob([embedHtml], { type: 'text/html' });
-        const blobUrl = URL.createObjectURL(blob);
-
-        iframe.src = blobUrl;
-        iframe.onload = () => {
-          skeleton.classList.add('hidden');
-          iframe.classList.add('visible');
-          // Re-inicializar embeds de Instagram si el objeto está disponible
-          if (window.instgrm) window.instgrm.Embeds.process();
-        };
-
-      } catch (err) {
+      // URL vacía o inválida → estado de error
+      if (!postUrl || !/instagram\.com\/(p|reel|tv)\//.test(postUrl)) {
         skeleton.classList.add('hidden');
-        document.getElementById('error-desc').textContent =
-          'No podemos mostrar este contenido. Puede que sea privado, haya sido eliminado, o las credenciales no sean válidas. ' + err.message;
         errorState.classList.add('visible');
+        return;
       }
+
+      // Construir el blockquote oficial de Instagram
+      const blockquote = document.createElement('blockquote');
+      blockquote.className = 'instagram-media';
+      blockquote.setAttribute('data-instgrm-permalink', postUrl);
+      blockquote.setAttribute('data-instgrm-version', '14');
+      blockquote.style.cssText = 'width:100%;max-width:540px;margin:0 auto;background:#fff;border-radius:12px;';
+      container.appendChild(blockquote);
+
+      // Renderizar. embed.js sustituye el blockquote por el post ya montado.
+      if (window.instgrm && window.instgrm.Embeds) {
+        window.instgrm.Embeds.process();
+      } else {
+        // embed.js aún no cargó: lo cargamos y procesamos al terminar.
+        const s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.instagram.com/embed.js';
+        s.onload = () => { if (window.instgrm) window.instgrm.Embeds.process(); };
+        document.body.appendChild(s);
+      }
+
+      // Ocultar el skeleton cuando Instagram inyecte su iframe en el contenedor.
+      const observer = new MutationObserver(() => {
+        if (container.querySelector('iframe')) {
+          skeleton.classList.add('hidden');
+          observer.disconnect();
+        }
+      });
+      observer.observe(container, { childList: true, subtree: true });
+
+      // Fallback por si no detectamos el iframe (red lenta, post no disponible).
+      skeletonTimer = setTimeout(() => skeleton.classList.add('hidden'), 4000);
+    }
+
+    // Pegar una URL de Instagram a mano
+    function addLink() {
+      const url = prompt('Pega la URL de un post o reel público de Instagram:', 'https://www.instagram.com/reel/');
+      if (!url) return;
+      const trimmed = url.trim();
+      const type = /\/reel\//.test(trimmed) ? 'reel' : 'post';
+      openModal(type, trimmed, 'Enlace pegado', type === 'reel' ? 'Reel' : 'Post');
     }
 
     function closeModal() {
       document.getElementById('modal').classList.remove('open');
       document.body.style.overflow = '';
-      const iframe = document.getElementById('ig-iframe');
-      iframe.src = '';
-      iframe.classList.remove('visible');
+      document.getElementById('embed-container').innerHTML = '';
       document.getElementById('skeleton').classList.remove('hidden');
       document.getElementById('error-state').classList.remove('visible');
+      if (skeletonTimer) clearTimeout(skeletonTimer);
     }
 
     function handleOverlayClick(e) {
